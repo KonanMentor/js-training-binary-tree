@@ -1,36 +1,25 @@
 'use strict';
-/*
-function split(node, key) {
-	if (!node) {
-		return [null, null];
-	}
-
-	if (node.data <= key) {
-		// const [left, right] = split(node.right, key); :c
-		let res = split(node.right, key);
-		res[0] = new Node(node.data, node.left, res[0]);
-		return res;
-		//return [new Node(node.data, node.left, left), right];
-	} else {
-		//const [left, right] = split(node.left, key);
-		//return [left, new Node(node.data, right, node.right)];
-		let res = split(node.left, key);
-		res[1] = new Node(node.data, res[1], node.right);
-		return res;
-	}
-}
-
-function merge(left, right) {
-	if (!left || !right) {
-		return left || right;
-	}
-
-	return new Node(left.data, left.left, merge(left.right, right));
-}
-*/
 
 function rightmostPolicy(node) {
 	return node.right;
+}
+
+function createInsertPolicy(data) {
+	return (node) => {
+		return data <= node.data ? node.left : node.right;
+	};
+}
+
+function createSearchPolicy(data) {
+	return (node) => {
+		return node.data === data ? null : (data < node.data ? node.left : node.right);
+	};
+}
+
+function createDoesContainReducer(data) {
+	return (previousValue, node) => {
+		return previousValue || (node && node.data === data);
+	};
 }
 
 function parentReduce(previousValue, node) {
@@ -40,10 +29,14 @@ function parentReduce(previousValue, node) {
 	};
 }
 
+function nodeReduce(previousValue, node) {
+	return node;
+}
+
 function traverse(node, policy, reduce, initialValue) {
 	const nextNode = policy(node);
-	const nextValue = reduce(initialValue, nextNode);
-	return nextNode ? traverse(nextNode, policy, reduce, nextValue) : initialValue;
+	const value = reduce(initialValue, node);
+	return nextNode ? traverse(nextNode, policy, reduce, value) : value;
 }
 
 function rehang(parent, child, newChild) {
@@ -52,10 +45,6 @@ function rehang(parent, child, newChild) {
 	} else {
 		parent.right = newChild;
 	}
-}
-
-function rightmost(node) {
-	return !node.right ? node : rightmost(node.right);
 }
 
 const nodes = Symbol();
@@ -73,52 +62,31 @@ class BinaryTree {
 			this.root = new Node(data);
 			return;
 		}
+		
+		const policy = createInsertPolicy(data);
+		const node = traverse(this.root, policy, nodeReduce, null);
 
-		let node = this.root;
-
-		for (;;) {
-			if (data <= node.data) {
-				if (node.left) {
-					node = node.left;
-				} else {
-					node.left = new Node(data);
-					break;
-				}
-			} else {
-				if (node.right) {
-					node = node.right;
-				} else {
-					node.right = new Node(data);
-					break;
-				}
-			}
+		if (data <= node.data) {
+			node.left = new Node(data);
+		} else {
+			node.right = new Node(data);
 		}
-		/*const res = split(this.root, data);
-		this.root = merge(merge(res[0], new Node(data)), res[1]);
-
-		console.log(JSON.stringify(this.root));*/
 	}
 
 	contains(data) {
-		let node = this.root;
-
-		while (node && node.data !== data) {
-			node = data < node.data ? node.left : node.right;
-		}
-
-		return !!node;
+		const policy = createSearchPolicy(data);
+		const reduce = createDoesContainReducer(data);
+		return traverse(this.root, policy, reduce, false);
 	}
 
 	remove(data) {
-		let node = this.root;
-		let parent = null;
+		const policy = createSearchPolicy(data);
+		//const {parent, node} = traverse(this.root, policy, parentReduce, { parent: null, node: null });
+		const res = traverse(this.root, policy, parentReduce, { parent: null, node: null });
+		const parent = res.parent;
+		const node = res.node;
 
-		while (node && node.data !== data) {
-			parent = node;
-			node = data < node.data ? node.left : node.right;
-		}
-
-		if (!node) {
+		if (!node || node.data !== data) {
 			return;
 		}
 		
@@ -127,7 +95,7 @@ class BinaryTree {
 		} else if (!node.left || !node.right) {
 			rehang(parent, node, node.left || node.right);
 		} else {
-			const replacement = traverse(node.left, rightmostPolicy, parentReduce, { parent: node, node: node.left });
+			const replacement = traverse(node.left, rightmostPolicy, parentReduce, { parent: null, node });
 			rehang(parent, node, replacement.node);
 			rehang(replacement.parent, replacement.node, replacement.node.left);
 			replacement.node.left = node.left;
